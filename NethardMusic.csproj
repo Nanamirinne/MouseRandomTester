@@ -5,8 +5,8 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>MouseRandomTester</RootNamespace>
-    <AssemblyName>MouseRandomTester</AssemblyName>
+    <RootNamespace>NethardMusic</RootNamespace>
+    <AssemblyName>Nethard Music</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>

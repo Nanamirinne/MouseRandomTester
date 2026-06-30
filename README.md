@@ -18,11 +18,11 @@ This project targets .NET Framework 4.8 and Windows Forms.
 You can compile it with the Windows .NET Framework C# compiler:
 
 ```powershell
-& "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:winexe /platform:x64 /optimize+ /out:MouseRandomTester.exe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll Program.cs
+& "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:winexe /platform:x64 /optimize+ /out:"Nethard Music.exe" /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll Program.cs
 ```
 
-Or open `MouseRandomTester.csproj` in Visual Studio and build the Release x64 configuration.
+Or open `NethardMusic.csproj` in Visual Studio and build the Release x64 configuration.
 
 ## Use
 
-Run the generated `MouseRandomTester.exe`, click `Start`, then bring the browser page you want to test to the foreground. Click `Stop` or close the window to exit.
+Run the generated `Nethard Music.exe`, click `Start`, then bring the browser page you want to test to the foreground. Click `Stop` or close the window to exit.

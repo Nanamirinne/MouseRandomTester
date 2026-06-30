@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace MouseRandomTester
+namespace NethardMusic
 {
     internal static class Program
     {
@@ -44,14 +44,14 @@ namespace MouseRandomTester
 
         public MainForm()
         {
-            Text = "Mouse Random Tester";
+            Text = "Nethard Music";
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             ClientSize = new Size(420, 230);
 
             Label titleLabel = new Label();
-            titleLabel.Text = "Mouse Random Tester";
+            titleLabel.Text = "Nethard Music";
             titleLabel.Font = new Font(Font.FontFamily, 14, FontStyle.Bold);
             titleLabel.AutoSize = true;
             titleLabel.Location = new Point(22, 20);
