@@ -8,8 +8,9 @@ A small Windows desktop utility for automation testing. It randomly moves the mo
 - Toggle start and stop from the background with a configurable global hotkey, defaulting to `Ctrl+Alt+M`.
 - Runs at a configurable random interval, defaulting to 10-20 seconds.
 - Can automatically stop after a configurable number of minutes, or run until stopped.
-- Plays a repeated alarm and shows a topmost alert when the configured run duration ends.
-- Includes a Test alarm button for checking whether the alarm is audible without blocking the UI.
+- Plays a repeated alarm and shows a topmost visual alert when the configured run duration ends.
+- Flashes a red alert for 10 seconds and keeps the taskbar flashing until the alert is acknowledged.
+- Includes a Test alert button for checking both the visual and audible alerts.
 - Moves the mouse 10-25 pixels per action.
 - Scrolls 3-7 wheel clicks per action.
 - Optionally types 3-10 random letters, numbers, or spaces per action with human-like pauses between characters.

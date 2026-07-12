@@ -46,6 +46,8 @@ namespace NethardMusic
         private const short AlarmBitsPerSample = 16;
         private const short AlarmChannels = 1;
         private const short AlarmVolume = 26000;
+        private const int VisualAlertFlashIntervalMilliseconds = 500;
+        private const int VisualAlertFlashDurationSeconds = 10;
         private const int ToggleHotKeyId = 100;
         private const int WmHotKey = 0x0312;
         private const uint HotKeyModifierAlt = 0x0001;
@@ -57,6 +59,9 @@ namespace NethardMusic
         private const int ScrollEstimateEdgeBand = 75;
         private const int WheelDelta = 120;
         private const uint MouseEventWheel = 0x0800;
+        private const uint FlashWindowStop = 0x00000000;
+        private const uint FlashWindowAll = 0x00000003;
+        private const uint FlashWindowTimer = 0x00000004;
         private const string DefaultHotKeyKeyName = "M";
         private const string TypingCharacters = "abcdefghijklmnopqrstuvwxyz0123456789     ";
 
@@ -146,7 +151,7 @@ namespace NethardMusic
             toggleButton.Location = new Point(24, 296);
             toggleButton.Click += ToggleButton_Click;
 
-            testAlarmButton.Text = "Test alarm";
+            testAlarmButton.Text = "Test alert";
             testAlarmButton.Size = new Size(110, 30);
             testAlarmButton.Location = new Point(386, 183);
             testAlarmButton.Click += TestAlarmButton_Click;
@@ -481,6 +486,8 @@ namespace NethardMusic
         private void TestAlarmButton_Click(object sender, EventArgs e)
         {
             PlayCompletionAlarm();
+            ShowCompletionAlert("This is a visual alert test.");
+            StopCompletionAlarm();
         }
 
         private void Start()
@@ -526,11 +533,25 @@ namespace NethardMusic
             }
 
             RunMouseStep();
+
+            if (!running)
+            {
+                return;
+            }
+
             ScheduleNextAction();
         }
 
         private void ScheduleNextAction()
         {
+            // SendKeys.SendWait can process a stop hotkey while an action is still
+            // unwinding. Never let that stale action restart the timer or status.
+            if (!running)
+            {
+                timer.Stop();
+                return;
+            }
+
             if (IsRunDurationExpired())
             {
                 StopAfterDurationEnded();
@@ -566,7 +587,8 @@ namespace NethardMusic
         {
             Stop("Status: stopped (duration ended)");
             PlayCompletionAlarm();
-            ShowCompletionAlert();
+            ShowCompletionAlert("Configured run duration ended.");
+            StopCompletionAlarm();
         }
 
         private void PlayCompletionAlarm()
@@ -658,12 +680,89 @@ namespace NethardMusic
             }
         }
 
-        private void ShowCompletionAlert()
+        private void ShowCompletionAlert(string message)
         {
-            TopMost = true;
-            Activate();
-            MessageBox.Show(this, "Configured run duration ended.", "Nethard Music", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            TopMost = false;
+            bool wasTopMost = TopMost;
+            Form alert = new Form();
+            Timer flashTimer = new Timer();
+            Label alertLabel = new Label();
+            Button acknowledgeButton = new Button();
+            int flashTicks = 0;
+
+            alert.Text = "Nethard Music - Alert";
+            alert.StartPosition = FormStartPosition.CenterScreen;
+            alert.FormBorderStyle = FormBorderStyle.FixedDialog;
+            alert.MaximizeBox = false;
+            alert.MinimizeBox = false;
+            alert.ShowInTaskbar = false;
+            alert.TopMost = true;
+            alert.ClientSize = new Size(620, 240);
+            alert.BackColor = Color.Firebrick;
+
+            alertLabel.Text = message;
+            alertLabel.Font = new Font(Font.FontFamily, 20, FontStyle.Bold);
+            alertLabel.ForeColor = Color.White;
+            alertLabel.TextAlign = ContentAlignment.MiddleCenter;
+            alertLabel.Location = new Point(30, 35);
+            alertLabel.Size = new Size(560, 100);
+
+            acknowledgeButton.Text = "Acknowledge";
+            acknowledgeButton.Font = new Font(Font.FontFamily, 11, FontStyle.Bold);
+            acknowledgeButton.DialogResult = DialogResult.OK;
+            acknowledgeButton.Location = new Point(230, 165);
+            acknowledgeButton.Size = new Size(160, 44);
+
+            alert.Controls.Add(alertLabel);
+            alert.Controls.Add(acknowledgeButton);
+            alert.AcceptButton = acknowledgeButton;
+            alert.CancelButton = acknowledgeButton;
+
+            flashTimer.Interval = VisualAlertFlashIntervalMilliseconds;
+            flashTimer.Tick += delegate
+            {
+                flashTicks++;
+
+                if (flashTicks >= VisualAlertFlashDurationSeconds * 1000 / VisualAlertFlashIntervalMilliseconds)
+                {
+                    flashTimer.Stop();
+                    alert.BackColor = Color.Firebrick;
+                    alertLabel.ForeColor = Color.White;
+                    return;
+                }
+
+                bool showRed = flashTicks % 2 == 0;
+                alert.BackColor = showRed ? Color.Firebrick : Color.White;
+                alertLabel.ForeColor = showRed ? Color.White : Color.Firebrick;
+            };
+
+            try
+            {
+                TopMost = true;
+                Show();
+                Activate();
+                FlashTaskbar(FlashWindowAll | FlashWindowTimer);
+                flashTimer.Start();
+                alert.ShowDialog(this);
+            }
+            finally
+            {
+                flashTimer.Stop();
+                FlashTaskbar(FlashWindowStop);
+                TopMost = wasTopMost;
+                flashTimer.Dispose();
+                alert.Dispose();
+            }
+        }
+
+        private void FlashTaskbar(uint flags)
+        {
+            FlashWindowInfo info = new FlashWindowInfo();
+            info.cbSize = (uint)Marshal.SizeOf(typeof(FlashWindowInfo));
+            info.hwnd = Handle;
+            info.dwFlags = flags;
+            info.uCount = 0;
+            info.dwTimeout = 0;
+            FlashWindowEx(ref info);
         }
 
         private void ApplyRunDurationFromInput()
@@ -688,6 +787,11 @@ namespace NethardMusic
 
         private void UpdateRunningStatus()
         {
+            if (!running)
+            {
+                return;
+            }
+
             if (hasRunDuration)
             {
                 statusLabel.Text = "Status: running, " + FormatDuration(GetRemainingRunSeconds()) + " left";
@@ -762,10 +866,20 @@ namespace NethardMusic
 
             for (int i = 0; i < length; i++)
             {
+                if (!running)
+                {
+                    break;
+                }
+
                 char character = TypingCharacters[random.Next(0, TypingCharacters.Length)];
                 text += character;
 
                 SendKeys.SendWait(character.ToString());
+
+                if (!running)
+                {
+                    break;
+                }
 
                 if (i < length - 1)
                 {
@@ -890,6 +1004,19 @@ namespace NethardMusic
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool FlashWindowEx(ref FlashWindowInfo pwfi);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FlashWindowInfo
+        {
+            public uint cbSize;
+            public IntPtr hwnd;
+            public uint dwFlags;
+            public uint uCount;
+            public uint dwTimeout;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRect
