@@ -46,8 +46,9 @@ namespace NethardMusic
         private const short AlarmBitsPerSample = 16;
         private const short AlarmChannels = 1;
         private const short AlarmVolume = 26000;
-        private const int VisualAlertFlashIntervalMilliseconds = 500;
-        private const int VisualAlertFlashDurationSeconds = 10;
+        private const int DefaultRapidClicksPerSecond = 50;
+        private const int MinRapidClicksPerSecond = 1;
+        private const int MaxRapidClicksPerSecond = 200;
         private const int ToggleHotKeyId = 100;
         private const int WmHotKey = 0x0312;
         private const uint HotKeyModifierAlt = 0x0001;
@@ -58,10 +59,9 @@ namespace NethardMusic
         private const int ScrollEstimateMiddleBand = 45;
         private const int ScrollEstimateEdgeBand = 75;
         private const int WheelDelta = 120;
+        private const uint MouseEventLeftDown = 0x0002;
+        private const uint MouseEventLeftUp = 0x0004;
         private const uint MouseEventWheel = 0x0800;
-        private const uint FlashWindowStop = 0x00000000;
-        private const uint FlashWindowAll = 0x00000003;
-        private const uint FlashWindowTimer = 0x00000004;
         private const string DefaultHotKeyKeyName = "M";
         private const string TypingCharacters = "abcdefghijklmnopqrstuvwxyz0123456789     ";
 
@@ -72,6 +72,8 @@ namespace NethardMusic
         private readonly NumericUpDown minDelayInput = new NumericUpDown();
         private readonly NumericUpDown maxDelayInput = new NumericUpDown();
         private readonly NumericUpDown runDurationMinutesInput = new NumericUpDown();
+        private readonly CheckBox rapidClickerCheckBox = new CheckBox();
+        private readonly NumericUpDown rapidClicksPerSecondInput = new NumericUpDown();
         private readonly CheckBox keyboardActionsCheckBox = new CheckBox();
         private readonly CheckBox hotKeyCtrlCheckBox = new CheckBox();
         private readonly CheckBox hotKeyAltCheckBox = new CheckBox();
@@ -81,12 +83,15 @@ namespace NethardMusic
         private readonly Label nextRunLabel = new Label();
         private readonly Label lastActionLabel = new Label();
         private readonly Label hotKeyLabel = new Label();
-        private bool running;
+        private volatile bool running;
+        private volatile bool rapidClickerActive;
         private bool hasRunDuration;
         private bool hotKeyRegistered;
         private DateTime runEndsAt;
         private SoundPlayer completionAlarmPlayer;
         private MemoryStream completionAlarmStream;
+        private System.Threading.Timer rapidClickTimer;
+        private int rapidClickInProgress;
         private int estimatedScrollPosition;
 
         public MainForm()
@@ -95,7 +100,7 @@ namespace NethardMusic
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
-            ClientSize = new Size(520, 430);
+            ClientSize = new Size(520, 470);
 
             Label titleLabel = new Label();
             titleLabel.Text = "Nethard Music";
@@ -145,13 +150,25 @@ namespace NethardMusic
             keyboardActionsCheckBox.Checked = true;
             keyboardActionsCheckBox.Location = new Point(24, 184);
 
+            rapidClickerCheckBox.Text = "Rapid clicker mode";
+            rapidClickerCheckBox.AutoSize = true;
+            rapidClickerCheckBox.Location = new Point(24, 212);
+            rapidClickerCheckBox.CheckedChanged += RapidClickerInput_Changed;
+
+            Label rapidClicksPerSecondLabel = new Label();
+            rapidClicksPerSecondLabel.Text = "Clicks/sec";
+            rapidClicksPerSecondLabel.AutoSize = true;
+            rapidClicksPerSecondLabel.Location = new Point(184, 214);
+
+            ConfigureRapidClicksPerSecondInput(rapidClicksPerSecondInput, DefaultRapidClicksPerSecond, new Point(248, 210));
+
             toggleButton.Text = "Start";
             toggleButton.Font = new Font(Font.FontFamily, 11, FontStyle.Bold);
             toggleButton.Size = new Size(140, 44);
-            toggleButton.Location = new Point(24, 296);
+            toggleButton.Location = new Point(24, 336);
             toggleButton.Click += ToggleButton_Click;
 
-            testAlarmButton.Text = "Test alert";
+            testAlarmButton.Text = "Test alarm";
             testAlarmButton.Size = new Size(110, 30);
             testAlarmButton.Location = new Point(386, 183);
             testAlarmButton.Click += TestAlarmButton_Click;
@@ -159,36 +176,36 @@ namespace NethardMusic
             Label hotKeyConfigLabel = new Label();
             hotKeyConfigLabel.Text = "Hotkey";
             hotKeyConfigLabel.AutoSize = true;
-            hotKeyConfigLabel.Location = new Point(24, 218);
+            hotKeyConfigLabel.Location = new Point(24, 258);
 
-            ConfigureHotKeyCheckBox(hotKeyCtrlCheckBox, "Ctrl", true, new Point(78, 214));
-            ConfigureHotKeyCheckBox(hotKeyAltCheckBox, "Alt", true, new Point(130, 214));
-            ConfigureHotKeyCheckBox(hotKeyShiftCheckBox, "Shift", false, new Point(176, 214));
+            ConfigureHotKeyCheckBox(hotKeyCtrlCheckBox, "Ctrl", true, new Point(78, 254));
+            ConfigureHotKeyCheckBox(hotKeyAltCheckBox, "Alt", true, new Point(130, 254));
+            ConfigureHotKeyCheckBox(hotKeyShiftCheckBox, "Shift", false, new Point(176, 254));
             ConfigureHotKeyKeyComboBox();
 
             hotKeyLabel.Text = "Hotkey: registering";
             hotKeyLabel.AutoSize = true;
             hotKeyLabel.ForeColor = SystemColors.GrayText;
-            hotKeyLabel.Location = new Point(24, 246);
+            hotKeyLabel.Location = new Point(24, 286);
 
             statusLabel.Text = "Status: stopped";
             statusLabel.AutoSize = true;
-            statusLabel.Location = new Point(184, 302);
+            statusLabel.Location = new Point(184, 342);
 
             nextRunLabel.Text = "Next action: none";
             nextRunLabel.AutoSize = true;
-            nextRunLabel.Location = new Point(184, 326);
+            nextRunLabel.Location = new Point(184, 366);
 
             lastActionLabel.Text = "Last action: none";
             lastActionLabel.AutoSize = false;
             lastActionLabel.Size = new Size(470, 36);
-            lastActionLabel.Location = new Point(24, 356);
+            lastActionLabel.Location = new Point(24, 396);
 
             Label noteLabel = new Label();
             noteLabel.Text = "Close this window to exit.";
             noteLabel.AutoSize = true;
             noteLabel.ForeColor = SystemColors.GrayText;
-            noteLabel.Location = new Point(24, 404);
+            noteLabel.Location = new Point(24, 444);
 
             Controls.Add(titleLabel);
             Controls.Add(intervalLabel);
@@ -201,6 +218,9 @@ namespace NethardMusic
             Controls.Add(durationHintLabel);
             Controls.Add(settingsLabel);
             Controls.Add(keyboardActionsCheckBox);
+            Controls.Add(rapidClickerCheckBox);
+            Controls.Add(rapidClicksPerSecondLabel);
+            Controls.Add(rapidClicksPerSecondInput);
             Controls.Add(toggleButton);
             Controls.Add(testAlarmButton);
             Controls.Add(hotKeyConfigLabel);
@@ -231,6 +251,7 @@ namespace NethardMusic
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            StopRapidClicker();
             StopCompletionAlarm();
             base.OnFormClosed(e);
         }
@@ -406,6 +427,16 @@ namespace NethardMusic
             input.ValueChanged += RunDurationInput_ValueChanged;
         }
 
+        private void ConfigureRapidClicksPerSecondInput(NumericUpDown input, int value, Point location)
+        {
+            input.Minimum = MinRapidClicksPerSecond;
+            input.Maximum = MaxRapidClicksPerSecond;
+            input.Value = value;
+            input.Size = new Size(78, 22);
+            input.Location = location;
+            input.ValueChanged += RapidClickerInput_Changed;
+        }
+
         private void ConfigureHotKeyCheckBox(CheckBox checkBox, string text, bool isChecked, Point location)
         {
             checkBox.Text = text;
@@ -429,7 +460,7 @@ namespace NethardMusic
 
             hotKeyKeyComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             hotKeyKeyComboBox.Size = new Size(72, 22);
-            hotKeyKeyComboBox.Location = new Point(242, 212);
+            hotKeyKeyComboBox.Location = new Point(242, 252);
             hotKeyKeyComboBox.SelectedItem = DefaultHotKeyKeyName;
             hotKeyKeyComboBox.SelectedIndexChanged += HotKeyInput_Changed;
         }
@@ -451,6 +482,18 @@ namespace NethardMusic
                 ApplyRunDurationFromInput();
                 ScheduleNextAction();
             }
+        }
+
+        private void RapidClickerInput_Changed(object sender, EventArgs e)
+        {
+            if (!running)
+            {
+                return;
+            }
+
+            StopRapidClicker();
+            StartRapidClicker();
+            ScheduleNextAction();
         }
 
         private void HotKeyInput_Changed(object sender, EventArgs e)
@@ -486,8 +529,6 @@ namespace NethardMusic
         private void TestAlarmButton_Click(object sender, EventArgs e)
         {
             PlayCompletionAlarm();
-            ShowCompletionAlert("This is a visual alert test.");
-            StopCompletionAlarm();
         }
 
         private void Start()
@@ -497,6 +538,7 @@ namespace NethardMusic
             estimatedScrollPosition = 0;
             ApplyRunDurationFromInput();
             toggleButton.Text = "Stop";
+            StartRapidClicker();
             UpdateRunningStatus();
             ScheduleNextAction();
         }
@@ -511,6 +553,7 @@ namespace NethardMusic
             running = false;
             hasRunDuration = false;
             timer.Stop();
+            StopRapidClicker();
             toggleButton.Text = "Start";
             statusLabel.Text = statusText;
             nextRunLabel.Text = "Next action: none";
@@ -529,6 +572,12 @@ namespace NethardMusic
             {
                 StopAfterDurationEnded();
                 lastActionLabel.Text = "Last action: stopped after configured duration";
+                return;
+            }
+
+            if (rapidClickerCheckBox.Checked)
+            {
+                ScheduleNextAction();
                 return;
             }
 
@@ -556,6 +605,15 @@ namespace NethardMusic
             {
                 StopAfterDurationEnded();
                 lastActionLabel.Text = "Last action: stopped after configured duration";
+                return;
+            }
+
+            if (rapidClickerCheckBox.Checked)
+            {
+                timer.Interval = 1000;
+                timer.Start();
+                nextRunLabel.Text = "Rapid clicker: " + rapidClicksPerSecondInput.Value + " clicks/sec";
+                UpdateRunningStatus();
                 return;
             }
 
@@ -587,8 +645,56 @@ namespace NethardMusic
         {
             Stop("Status: stopped (duration ended)");
             PlayCompletionAlarm();
-            ShowCompletionAlert("Configured run duration ended.");
-            StopCompletionAlarm();
+        }
+
+        private void StartRapidClicker()
+        {
+            rapidClickerActive = rapidClickerCheckBox.Checked;
+
+            if (!rapidClickerCheckBox.Checked)
+            {
+                return;
+            }
+
+            int clicksPerSecond = (int)rapidClicksPerSecondInput.Value;
+            int intervalMilliseconds = Math.Max(1, 1000 / clicksPerSecond);
+            rapidClickTimer = new System.Threading.Timer(RapidClickTimer_Tick, null, 0, intervalMilliseconds);
+        }
+
+        private void StopRapidClicker()
+        {
+            if (rapidClickTimer == null)
+            {
+                return;
+            }
+
+            rapidClickTimer.Dispose();
+            rapidClickTimer = null;
+            rapidClickInProgress = 0;
+            rapidClickerActive = false;
+        }
+
+        private void RapidClickTimer_Tick(object state)
+        {
+            if (!running || !rapidClickerActive)
+            {
+                return;
+            }
+
+            if (System.Threading.Interlocked.Exchange(ref rapidClickInProgress, 1) == 1)
+            {
+                return;
+            }
+
+            try
+            {
+                mouse_event(MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
+                mouse_event(MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref rapidClickInProgress, 0);
+            }
         }
 
         private void PlayCompletionAlarm()
@@ -678,91 +784,6 @@ namespace NethardMusic
             {
                 writer.Write((short)0);
             }
-        }
-
-        private void ShowCompletionAlert(string message)
-        {
-            bool wasTopMost = TopMost;
-            Form alert = new Form();
-            Timer flashTimer = new Timer();
-            Label alertLabel = new Label();
-            Button acknowledgeButton = new Button();
-            int flashTicks = 0;
-
-            alert.Text = "Nethard Music - Alert";
-            alert.StartPosition = FormStartPosition.CenterScreen;
-            alert.FormBorderStyle = FormBorderStyle.FixedDialog;
-            alert.MaximizeBox = false;
-            alert.MinimizeBox = false;
-            alert.ShowInTaskbar = false;
-            alert.TopMost = true;
-            alert.ClientSize = new Size(620, 240);
-            alert.BackColor = Color.Firebrick;
-
-            alertLabel.Text = message;
-            alertLabel.Font = new Font(Font.FontFamily, 20, FontStyle.Bold);
-            alertLabel.ForeColor = Color.White;
-            alertLabel.TextAlign = ContentAlignment.MiddleCenter;
-            alertLabel.Location = new Point(30, 35);
-            alertLabel.Size = new Size(560, 100);
-
-            acknowledgeButton.Text = "Acknowledge";
-            acknowledgeButton.Font = new Font(Font.FontFamily, 11, FontStyle.Bold);
-            acknowledgeButton.DialogResult = DialogResult.OK;
-            acknowledgeButton.Location = new Point(230, 165);
-            acknowledgeButton.Size = new Size(160, 44);
-
-            alert.Controls.Add(alertLabel);
-            alert.Controls.Add(acknowledgeButton);
-            alert.AcceptButton = acknowledgeButton;
-            alert.CancelButton = acknowledgeButton;
-
-            flashTimer.Interval = VisualAlertFlashIntervalMilliseconds;
-            flashTimer.Tick += delegate
-            {
-                flashTicks++;
-
-                if (flashTicks >= VisualAlertFlashDurationSeconds * 1000 / VisualAlertFlashIntervalMilliseconds)
-                {
-                    flashTimer.Stop();
-                    alert.BackColor = Color.Firebrick;
-                    alertLabel.ForeColor = Color.White;
-                    return;
-                }
-
-                bool showRed = flashTicks % 2 == 0;
-                alert.BackColor = showRed ? Color.Firebrick : Color.White;
-                alertLabel.ForeColor = showRed ? Color.White : Color.Firebrick;
-            };
-
-            try
-            {
-                TopMost = true;
-                Show();
-                Activate();
-                FlashTaskbar(FlashWindowAll | FlashWindowTimer);
-                flashTimer.Start();
-                alert.ShowDialog(this);
-            }
-            finally
-            {
-                flashTimer.Stop();
-                FlashTaskbar(FlashWindowStop);
-                TopMost = wasTopMost;
-                flashTimer.Dispose();
-                alert.Dispose();
-            }
-        }
-
-        private void FlashTaskbar(uint flags)
-        {
-            FlashWindowInfo info = new FlashWindowInfo();
-            info.cbSize = (uint)Marshal.SizeOf(typeof(FlashWindowInfo));
-            info.hwnd = Handle;
-            info.dwFlags = flags;
-            info.uCount = 0;
-            info.dwTimeout = 0;
-            FlashWindowEx(ref info);
         }
 
         private void ApplyRunDurationFromInput()
@@ -1004,19 +1025,6 @@ namespace NethardMusic
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
-
-        [DllImport("user32.dll")]
-        private static extern bool FlashWindowEx(ref FlashWindowInfo pwfi);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct FlashWindowInfo
-        {
-            public uint cbSize;
-            public IntPtr hwnd;
-            public uint dwFlags;
-            public uint uCount;
-            public uint dwTimeout;
-        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRect

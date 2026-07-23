@@ -8,9 +8,9 @@ A small Windows desktop utility for automation testing. It randomly moves the mo
 - Toggle start and stop from the background with a configurable global hotkey, defaulting to `Ctrl+Alt+M`.
 - Runs at a configurable random interval, defaulting to 10-20 seconds.
 - Can automatically stop after a configurable number of minutes, or run until stopped.
-- Plays a repeated alarm and shows a topmost visual alert when the configured run duration ends.
-- Flashes a red alert for 10 seconds and keeps the taskbar flashing until the alert is acknowledged.
-- Includes a Test alert button for checking both the visual and audible alerts.
+- Plays a repeated alarm when the configured run duration ends without stealing focus.
+- Includes a Test alarm button for checking whether the alarm is audible without blocking the UI.
+- Includes a rapid clicker mode that continuously clicks the current cursor location at a configurable rate.
 - Moves the mouse 10-25 pixels per action.
 - Scrolls 3-7 wheel clicks per action.
 - Optionally types 3-10 random letters, numbers, or spaces per action with human-like pauses between characters.
@@ -31,4 +31,4 @@ Or open `NethardMusic.csproj` in Visual Studio and build the Release x64 configu
 
 ## Use
 
-Run the generated `Nethard Music.exe`, choose the minimum and maximum interval seconds, optionally set run minutes (`0` means until stopped), choose a hotkey if the default is unavailable, click `Start` or press the configured hotkey, then bring the browser page you want to test to the foreground. Uncheck keyboard actions if you only want mouse movement and wheel scrolling without random typing. Click `Stop`, press the configured hotkey again, or close the window to exit.
+Run the generated `Nethard Music.exe`, choose the minimum and maximum interval seconds, optionally set run minutes (`0` means until stopped), choose a hotkey if the default is unavailable, click `Start` or press the configured hotkey, then bring the browser page you want to test to the foreground. Enable rapid clicker mode to continuously click the current cursor location; while rapid clicker mode is active, the normal move, scroll, and typing actions are paused. Uncheck keyboard actions if you only want mouse movement and wheel scrolling without random typing. Click `Stop`, press the configured hotkey again, or close the window to exit.
